@@ -1,0 +1,23 @@
+
+# STM32CubeIDE generated build files
+Debug/
+Release/
+build/
+
+# Compiler outputs
+*.o
+*.d
+*.elf
+*.hex
+*.bin
+*.map
+*.list
+*.su
+
+# Local IDE and temporary files
+.settings/
+.metadata/
+*.launch
+*.log
+*.tmp
+*~
