@@ -22,6 +22,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "gps.h"
 #include "app_ipc.h"
 /* USER CODE END Includes */
 
@@ -129,6 +130,7 @@ const osEventFlagsAttr_t evAlarm_attributes = {
 };
 /* USER CODE BEGIN PV */
 volatile uint8_t estop_pending = 0;
+SystemState g_systemState = {0};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -753,10 +755,36 @@ void StartTaskGPS(void *argument)
 {
   /* USER CODE BEGIN StartTaskGPS */
   /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
+  GpsData_t currentGps;
+
+/* Khoi dong GPS DMA */
+if (!GPS_Init())
+{
+    Error_Handler();
+}
+
+for (;;)
+{
+    /* Xu ly du lieu GPS */
+    GPS_Process();
+
+    /* Lay du lieu da phan tich */
+    if (GPS_GetData(&currentGps))
+    {
+        /* Khoa mutex */
+        if (osMutexAcquire(mtxStateHandle, 20) == osOK)
+        {
+            g_systemState.gps = currentGps;
+
+            g_systemState.gpsReady = currentGps.fix;
+
+            /* Giai phong mutex */
+            osMutexRelease(mtxStateHandle);
+        }
+    }
+
+    osDelay(10);
+}
   /* USER CODE END StartTaskGPS */
 }
 
