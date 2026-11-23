@@ -22,7 +22,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "app_ipc.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -128,7 +128,7 @@ const osEventFlagsAttr_t evAlarm_attributes = {
   .name = "evAlarm"
 };
 /* USER CODE BEGIN PV */
-
+volatile uint8_t estop_pending = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -224,7 +224,7 @@ int main(void)
 
   /* Create the queue(s) */
   /* creation of qJoy */
-  qJoyHandle = osMessageQueueNew (8, sizeof(uint16_t), &qJoy_attributes);
+  qJoyHandle = osMessageQueueNew (8, sizeof(uint32_t), &qJoy_attributes);
 
   /* creation of qLogEvent */
   qLogEventHandle = osMessageQueueNew (16, sizeof(uint32_t), &qLogEvent_attributes);
@@ -369,6 +369,7 @@ static void MX_ADC1_Init(void)
 
   /** Configure Regular Channel
   */
+  sConfig.Channel = ADC_CHANNEL_1;
   sConfig.Rank = ADC_REGULAR_RANK_2;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
@@ -377,6 +378,7 @@ static void MX_ADC1_Init(void)
 
   /** Configure Regular Channel
   */
+  sConfig.Channel = ADC_CHANNEL_2;
   sConfig.Rank = ADC_REGULAR_RANK_3;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
@@ -667,7 +669,7 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : PA15 */
   GPIO_InitStruct.Pin = GPIO_PIN_15;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
@@ -687,7 +689,13 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+    if (GPIO_Pin == GPIO_PIN_15)
+    {
+      estop_pending = 1;
+    }
+}
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartTaskIMU */
@@ -719,10 +727,18 @@ void StartTaskAlarm(void *argument)
 {
   /* USER CODE BEGIN StartTaskAlarm */
   /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
+  for (;;)
+{
+    if (estop_pending)
+    {
+        estop_pending = 0;
+
+        // Gui su kien E-Stop vao FreeRTOS
+        osEventFlagsSet(evAlarmHandle, BIT_ESTOP);
+    }
+
+    osDelay(10);
+}
   /* USER CODE END StartTaskAlarm */
 }
 
