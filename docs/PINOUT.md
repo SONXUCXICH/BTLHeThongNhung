@@ -1,80 +1,86 @@
 # PINOUT – Trạm giám sát môi trường & cảnh báo an toàn công nghiệp
 
-Vi điều khiển: **STM32F103C8T6** (ARM Cortex-M3, mục tiêu 72 MHz; nếu sử dụng thạch anh HSE 8 MHz thì cấu hình PLL ×9), chạy **FreeRTOS**.
-
-> **Trạng thái:** Bản PINOUT đã cập nhật theo phần cứng nhóm đang sử dụng (**Joystick PS2** và **nút E-Stop tiếp điểm NO**). Chung, Sơn và Đào cần đối chiếu lần cuối với module thực tế trước khi chốt file `.ioc` trong STM32CubeMX. **Đào là người phụ trách cấu hình/generate code CubeMX chung.**
+Vi điều khiển: **STM32F103C8T6** (ARM Cortex-M3, 72 MHz, HSE 8 MHz → PLL ×9), chạy FreeRTOS.
 
 ## 1. Bảng chân kết nối
 
 | Ngoại vi | Giao tiếp / cấu hình | Chân STM32 | DMA / Ngắt |
 |---|---|---|---|
-| GPS NEO-6M | USART1, 9600 baud, NMEA | PA10 (USART1_RX) ← TX của GPS; PA9 (USART1_TX) → RX của GPS (nếu cần cấu hình) | DMA1_Ch5 (USART1_RX) + ngắt UART IDLE, ring buffer |
-| MPU6050 | I2C1, dự kiến Fast Mode 400 kHz | PB6 (SCL), PB7 (SDA) | Đọc theo chu kỳ trong `Task_IMU` |
-| MQ-2 (AO) | ADC1_IN0, 12-bit; **kênh 1/3** trong ADC Scan | PA0 (sau mạch chia áp) | DMA1_Ch1, Circular |
-| **Joystick PS2 – VRx** | **ADC1_IN1, 12-bit; kênh 2/3** trong ADC Scan | **PA1** | **DMA1_Ch1, Circular (dùng chung bộ đệm ADC)** |
-| **Joystick PS2 – VRy** | **ADC1_IN2, 12-bit; kênh 3/3** trong ADC Scan | **PA2** | **DMA1_Ch1, Circular (dùng chung bộ đệm ADC)** |
-| Joystick PS2 – SW | Nút nhấn tích hợp (tùy chọn) | **Chưa phân bổ**, có thể để không nối | Chưa sử dụng trong yêu cầu chuyển trang bằng 4 hướng |
-| DHT11 | GPIO một dây, cần chuyển hướng chân khi giao tiếp; đọc có timeout | PB5 (dự kiến) | Không dùng DMA; đọc định kỳ, tối thiểu 2 s/lần |
-| TFT ST7735 1.8\" | SPI1 Master, truyền 8-bit; chân `SDA` trên TFT là MOSI, `A0` là DC | PA5 (SCK), PA7 (MOSI), PA4 (CS), PB0 (RESET), PB1 (DC/A0) | DMA1_Ch3 (SPI1_TX) |
-| Thẻ MicroSD | SPI2 Master + FatFs (FAT32) | PB13 (SCK), PB15 (MOSI), PB14 (MISO), PB12 (CS) | Khởi tạo ở tốc độ thấp; driver lưu trữ do Đào phụ trách |
-| Còi cảnh báo | TIM1_CH1 PWM (nếu dùng còi thụ động), tầng đệm/transistor phù hợp | PA8 | TIM1 PWM |
-| LED cảnh báo (nếu lắp riêng) | GPIO Output | **Chưa phân bổ chân** | Cần chốt nếu sử dụng LED rời |
-| **E-Stop (tiếp điểm NO)** | **PA15 nối qua nút NO xuống GND; GPIO Input Pull-up; EXTI cạnh xuống (Falling Edge)** | **PA15 (EXTI15)** | `EXTI15_10_IRQn`, thông báo sự kiện bằng API `...FromISR()` phù hợp |
-| Nạp / Debug | ST-Link (SWD) | PA13 (SWDIO), PA14 (SWCLK) | Giữ SWD, tắt JTAG để dùng PA15 |
+| GPS NEO-6M | USART1, 9600 baud, NMEA | PA10 (RX) ← TX module, PA9 (TX) → RX module | DMA1_Ch5 + ngắt UART IDLE (Ring Buffer) |
+| MMA845x (gia tốc kế) | I2C1 Fast Mode 400 kHz | PB6 (SCL), PB7 (SDA) | Task đọc định kỳ |
+| MQ-2 (AO) | ADC1 IN0, 12-bit, Scan 3 kênh | PA0 | DMA1_Ch1, Circular |
+| Joystick VRx | ADC1 IN1 (cùng bộ Scan) | PA1 | DMA1_Ch1, Circular |
+| Joystick VRy | ADC1 IN2 (cùng bộ Scan) | PA2 | DMA1_Ch1, Circular |
+| DHT11 | GPIO một dây (open-drain), polling có timeout | PB5 (đề xuất) | Không dùng ngắt |
+| TFT ST7735 1.8" | SPI1 Master, chỉ TX | PA5 (SCK), PA7 (MOSI), PA4 (CS), PB0 (RES), PB1 (DC) | DMA1_Ch3 |
+| Thẻ Micro SD | SPI2 Master + FATFS (FAT32) | PB13 (SCK), PB15 (MOSI), PB14 (MISO), PB12 (CS) | – |
+| Còi / LED báo | TIM1 PWM hoặc GPIO | PA8 (TIM1_CH1), qua transistor | – |
+| Nút E-Stop | Nút nhấn kéo xuống GND, pull-up trong | PA15 | EXTI15, ưu tiên ngắt cao nhất |
+| Nạp / Debug | ST-Link (SWD) | PA13 (SWDIO), PA14 (SWCLK) | – |
 
-**Ghi chú về Joystick:** Không sử dụng hai nút NEXT/PREV trên PA1/PA2 như bản cũ. Chung xử lý điện áp `VRx`, `VRy` thành sự kiện `UP`, `DOWN`, `LEFT`, `RIGHT` và gửi qua Queue `qJoy`; Sơn nhận các sự kiện đó trong `Task_GUI` để chuyển trang. Chiều tương ứng với giá trị ADC phải xác nhận bằng thử nghiệm thực tế.
+## 2. Phân bổ DMA
 
-## 2. Phân bổ DMA và ADC
-
-| Kênh DMA | Ngoại vi | Hướng | Chế độ / bộ đệm |
+| Kênh | Ngoại vi | Hướng | Chế độ |
 |---|---|---|---|
-| DMA1_Ch1 | **ADC1 – 3 kênh: IN0 (PA0), IN1 (PA1), IN2 (PA2)** | Ngoại vi → RAM | **Circular**, Half Word, `uint16_t adcBuf[3]` |
-| DMA1_Ch3 | SPI1_TX (TFT) | RAM → Ngoại vi | Normal (truyền theo dải) |
-| DMA1_Ch5 | USART1_RX (GPS) | Ngoại vi → RAM | Circular (ring buffer) |
-
-**Yêu cầu cấu hình ADC1 cho Đào:**
-
-- Độ phân giải **12-bit**; bật **Scan Conversion** với thứ tự rank **IN0 → IN1 → IN2** và **3 conversions**.
-- Dùng **DMA Circular**, bộ đệm 3 phần tử `adcBuf[0] = MQ-2`, `adcBuf[1] = VRx`, `adcBuf[2] = VRy`.
-- Có thể sử dụng Continuous Conversion theo kế hoạch; bảo đảm tốc độ ADC không vượt giới hạn của STM32F103 (ví dụ clock ADC 12 MHz khi APB2 = 72 MHz và prescaler /6).
-- Không cấu hình PA1/PA2 thành GPIO Input cho hai nút NEXT/PREV.
-- Kiểm tra các tên tùy chọn Scan/DMA trong phiên bản STM32CubeMX thực tế trước khi generate.
+| DMA1_Ch1 | ADC1 | Ngoại vi → RAM | Circular, Half Word |
+| DMA1_Ch3 | SPI1_TX (TFT) | RAM → Ngoại vi | Normal |
+| DMA1_Ch5 | USART1_RX (GPS) | Ngoại vi → RAM | Circular (Ring Buffer) |
 
 ## 3. Nguồn điện
 
-| Mức | Cấp cho / ghi chú |
+| Mức | Cấp cho |
 |---|---|
-| 5 V | MQ-2 (mạch sưởi); còi nếu loại còi yêu cầu 5 V và có tầng điều khiển phù hợp |
-| 3.3 V | MCU; **Joystick PS2** (để VRx/VRy không vượt 3.3 V); TFT theo thông số module; MPU6050, thẻ SD, DHT11/GPS **chỉ khi module tương thích mức nguồn này** |
-| GND | Tất cả các module dùng chung GND với STM32 |
+| 5 V | MQ-2 (VCC, sưởi), còi (qua transistor) |
+| 3.3 V (LDO) | MCU, GPS, MMA845x, TFT, Thẻ SD, DHT11, Joystick |
+| GND | Nối chung toàn mạch |
 
-**Chú ý:** Xác nhận điện áp cấp và điện áp logic của **từng board module thực tế** (đặc biệt là GPS, TFT, DHT11 và khe MicroSD). Không cấp trực tiếp tín hiệu 5 V vào chân ADC STM32. Trước khi bật nguồn, kiểm tra tổng dòng tiêu thụ có phù hợp bộ nguồn 3.3 V/5 V đang sử dụng.
+## 4. Đấu dây theo chân module
 
-## 4. Lưu ý quan trọng
+| Linh kiện | Chân trên module | Nối vào |
+|---|---|---|
+| MMA845x | VCC-IN / GND | 3.3 V / GND (chân 3.3V để trống) |
+| | SCL / SDA | PB6 / PB7 |
+| | SA0 | GND (địa chỉ 0x1C) hoặc 3.3 V (0x1D), không để hở |
+| | INT1, INT2 | Để trống |
+| MQ-2 | VCC / GND | 5 V / GND |
+| | AO | Qua cầu chia áp (10 kΩ trên, 15 kΩ dưới) rồi vào PA0 |
+| | DO | Để trống |
+| Joystick | VCC / GND | 3.3 V / GND |
+| | VRx / VRy | PA1 / PA2 |
+| | SW | Để trống (chưa dùng) |
+| DHT11 | VCC / GND | 3.3 V / GND |
+| | DATA | PB5 (pull-up 4.7 kΩ lên 3.3 V) |
+| GPS NEO-6M | VCC / GND | 3.3 V / GND |
+| | TX / RX | PA10 / PA9 (nối chéo) |
+| TFT ST7735 | VCC / GND / LED | 3.3 V / GND / 3.3 V |
+| | SCK / SDA (MOSI) | PA5 / PA7 |
+| | CS / RES / DC | PA4 / PB0 / PB1 |
+| Thẻ Micro SD (module SPI) | VCC / GND | 3.3 V (hoặc 5 V nếu module có ổn áp) / GND |
+| | SCK / MOSI / MISO / CS | PB13 / PB15 / PB14 / PB12 |
+| Còi / LED báo | Điều khiển | PA8 qua transistor |
+| Nút E-Stop | Hai đầu | PA15 và GND |
+| ST-Link | SWDIO / SWCLK / GND | PA13 / PA14 / GND |
 
-1. **MQ-2 dùng 5 V nên chân AO có thể cao hơn 3.3 V.** Phải chia áp trước khi vào PA0; ví dụ R trên 10 kΩ, R dưới 15 kΩ cho điện áp lý tưởng 5 V xuống khoảng **3.0 V**. Đo bằng đồng hồ để xác nhận điện áp ở PA0 không vượt 3.3 V.
-2. **Joystick PS2:** Cấp nguồn **3.3 V**, GND chung; `VRx → PA1`, `VRy → PA2`. Hai trục là **tín hiệu analog**, không phải nút nhấn NEXT/PREV. Nút `SW` tạm không sử dụng và không tự ý chiếm chân MCU khác.
-3. **E-Stop NO:** Nối **PA15 — nút NO — GND**; cấu hình **Pull-up + Falling Edge**. Bình thường PA15 = 1, nhấn = 0. Phần mềm cần chống dội và **giữ trạng thái cảnh báo (latch)** cho đến khi có thao tác xóa/xác nhận rõ ràng; không tự xóa cảnh báo chỉ vì thả nút.
-4. **PA15 mặc định thuộc JTAG (JTDI).** Trong CubeMX chọn **SYS → Debug = Serial Wire** để tắt JTAG, vẫn giữ PA13/PA14 cho SWD.
-5. **Ưu tiên ngắt FreeRTOS:** IRQ `EXTI15_10_IRQn`, UART IDLE và DMA nếu sử dụng API `...FromISR()` phải có mức ưu tiên NVIC **hợp lệ đối với `configMAX_SYSCALL_INTERRUPT_PRIORITY`** (giá trị ưu tiên số không được cao hơn ngưỡng cho phép). Không tùy ý đặt IRQ E-Stop mức ưu tiên số 0 rồi gọi API FreeRTOS. Thống nhất NVIC priority grouping với Đào.
-6. **DHT11:** PB5 là chân dự kiến; cần kiểm tra điện trở kéo lên (thường khoảng 4.7 kΩ đến nguồn logic phù hợp). Đọc tối thiểu cách nhau 2 s và phải có timeout, tránh giữ ngắt bị vô hiệu quá lâu.
-7. **MPU6050:** I2C1 cần điện trở kéo lên SCL/SDA về mức logic **3.3 V** (module có thể đã có pull-up). Địa chỉ I2C thường là `0x68` nếu AD0 nối GND; kiểm tra `WHO_AM_I` trước khi viết bộ lọc góc.
-8. **MicroSD:** Khởi tạo SPI ở tốc độ **≤ 400 kHz**, sau đó tăng theo khả năng thực tế. Có thể dùng **khe MicroSD ở mặt sau TFT** nếu xác nhận bốn chân SD riêng trên board và dây nối phù hợp với SPI2; việc này thuộc `Task_Log` của **Đào**. Dùng **thẻ microSD**, không phải ổ SSD; ưu tiên thẻ microSDHC định dạng FAT32 để thử ban đầu.
-9. **TFT:** Giao tiếp SPI1 chỉ truyền nên PA6 (SPI1_MISO) để trống. Chân `LED` đèn nền phải nối đúng điện áp/kiểu điều khiển của module. STM32F103C8T6 có SRAM danh định **20 KB**, không chứa được toàn bộ framebuffer 128×160×16 bit (**40,960 byte**); nên vẽ theo dải nhỏ và truyền bằng DMA.
-10. **Còi:** Chốt loại còi chủ động/thụ động trước khi dùng PWM, chọn tầng transistor/diode bảo vệ nếu tải yêu cầu. Không cấp tải còi trực tiếp từ chân GPIO khi vượt khả năng dòng của MCU.
-11. **E-Stop trong đồ án là tín hiệu mô phỏng chức năng cảnh báo**, không phải mạch dừng khẩn cấp an toàn đạt chuẩn cho thiết bị công nghiệp thật.
-12. **Quản lý cấu hình chung:** Chỉ **Đào** cập nhật/generate file `.ioc` chung; Chung phụ trách đọc cảm biến và Joystick; Sơn phụ trách TFT, còi, E-Stop và review Pull Request. Thay đổi chân cần cả nhóm đồng ý trước khi merge vào `develop`.
+## 5. Lưu ý quan trọng
 
-## 5. Danh sách kiểm tra (Issue #4)
+1. **MQ-2 cấp 5 V nên chân AO có thể lên tới 5 V.** Bắt buộc chia áp trước khi vào PA0 (ví dụ R trên 10 kΩ, R dưới 15 kΩ → tối đa khoảng 3.0 V). Chân ADC của STM32F103 chỉ chịu tối đa 3.3 V.
+2. **PA15 mặc định là JTDI.** Phải tắt JTAG, giữ SWD (CubeMX: SYS → Debug = Serial Wire) thì mới dùng được làm EXTI15.
+3. **DHT11** chưa có chân trong bảng quy hoạch ban đầu, tạm chọn PB5 (không trùng chức năng nào khác). Cần pull-up 4.7 kΩ.
+4. **I2C1 (MMA845x)** cần pull-up 4.7 kΩ trên SCL và SDA. Địa chỉ 0x1C khi SA0 nối GND, 0x1D khi SA0 nối 3.3 V (code tự dò).
+5. **Thẻ SD** khởi tạo ở tốc độ ≤ 400 kHz rồi mới tăng tốc SPI2.
+6. **TFT** chỉ dùng TX nên PA6 (SPI1_MISO) để trống.
+7. **SRAM chỉ 20 KB**, không chứa nổi framebuffer 128×160×16 bit (≈ 40 KB). Vẽ theo từng dải (strip) rồi đẩy bằng DMA.
+8. **SWD (PA13/PA14) không dùng cho việc khác.**
+9. **Joystick cấp 3.3 V, không cấp 5 V**, vì 5 V làm quá áp chân ADC của STM32.
+10. **MMA845x chỉ có gia tốc kế (không có gyro)**, nên góc Pitch/Roll tính từ gia tốc rồi lọc IIR, không dùng Complementary Filter.
+11. **Module thẻ SD**: kiểm tra chữ in trên module để biết cấp 3.3 V hay 5 V. Thẻ dùng dung lượng ≤ 32 GB, FAT32.
 
-- [ ] Kiểm tra thực tế các module, điện áp nguồn 5 V / 3.3 V và GND chung.
-- [ ] Đối chiếu toàn bộ UART, SPI1, SPI2, I2C1, ADC1, PWM, EXTI, SWD và các kênh DMA; xử lý chân **chưa phân bổ** nếu cần.
-- [ ] Đo tín hiệu MQ-2 sau chia áp để xác nhận PA0 không vượt 3.3 V.
-- [ ] Xác nhận cấp nguồn Joystick **3.3 V**; đo ADC VRx/VRy tại vị trí giữa và bốn hướng; kiểm tra chuyển thành `JoyEvent_t` đúng chiều.
-- [ ] Cấu hình ADC1 **3 kênh** với bộ đệm `adcBuf[3]`, DMA Circular; không dùng PA1/PA2 làm nút GPIO.
-- [ ] Kiểm tra nút E-Stop **NO**, PA15 Pull-up và ngắt Falling Edge; xác minh đã tắt JTAG nhưng SWD vẫn nạp/debug được.
-- [ ] Kiểm tra `EXTI15_10_IRQn` và các IRQ có dùng `...FromISR()` tương thích cấu hình ưu tiên FreeRTOS.
-- [ ] MPU6050 trả lời trên I2C1 (`WHO_AM_I`) và các giá trị đo thay đổi hợp lý.
-- [ ] DHT11 đọc được nhiệt độ/độ ẩm, xử lý timeout khi ngắt kết nối.
-- [ ] Kiểm tra thực tế chân TFT/ST7735 và khe MicroSD nếu nhóm muốn dùng khe SD tích hợp.
-- [ ] **Đào và Sơn duyệt PINOUT**, sau đó Chung cập nhật Pull Request `feature/docs-pinout` → `develop` để Sơn merge.
+## 6. Danh sách kiểm tra (Issue #4)
+
+- [ ] Kiểm tra linh kiện và module của hệ thống
+- [ ] Kiểm tra chân UART, SPI, I2C, ADC, PWM, EXTI và DMA không bị trùng
+- [ ] Đo điện áp nguồn 5 V / 3.3 V; đo AO của MQ-2 sau chia áp (≤ 3.3 V)
+- [ ] Kiểm tra SWD nạp và debug được qua ST-Link
+- [ ] MMA845x trả lời trên I2C1 (đọc WHO_AM_I: 0x1A = MMA8451, 0x2A = MMA8452, 0x3A = MMA8453)
+- [ ] MQ-2 và Joystick đổi giá trị ADC khi tác động
+- [ ] DHT11 đọc được nhiệt độ và độ ẩm
