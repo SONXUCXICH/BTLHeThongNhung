@@ -25,6 +25,8 @@
 #include "app_ipc.h"
 #include "st7735.h"
 #include "tft_ui.h"
+#include "task_imu.h"
+#include "task_sensor.h"
 /* USER CODE END Includes */
 #include "app_ipc.h"
 /* USER CODE END Includes */
@@ -715,6 +717,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 void StartTaskIMU(void *argument)
 {
   /* USER CODE BEGIN 5 */
+    TaskIMU_Run();
   /* Infinite loop */
   for(;;)
   {
@@ -777,6 +780,7 @@ void StartTaskGPS(void *argument)
 void StartTaskSensor(void *argument)
 {
   /* USER CODE BEGIN StartTaskSensor */
+   TaskSensor_Run();
   /* Infinite loop */
   for(;;)
   {

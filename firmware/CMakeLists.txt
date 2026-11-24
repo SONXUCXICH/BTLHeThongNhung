@@ -46,6 +46,8 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/st7735.c
     App/Src/tft_ui.c
+    App/Src/task_imu.c
+    App/Src/task_sensor.c
 )
 
 # Add include paths
