@@ -25,6 +25,13 @@ static GpsData_t gps_data;
 /* Da nhan duoc cau RMC hop le ve cu phap hay chua */
 static bool gps_has_rmc = false;
 
+/* Theo doi DMA va thoi diem nhan cau RMC moi nhat */
+#define GPS_SIGNAL_TIMEOUT_MS 3000U
+#define GPS_RETRY_INTERVAL_MS 1000U
+static bool gps_dma_running = false;
+static uint32_t gps_last_rmc_tick = 0;
+static uint32_t gps_last_retry_tick = 0;
+
 
 /* =========================================================
    1. CHUYEN KY TU HEX SANG GIA TRI
@@ -314,7 +321,9 @@ static void GPS_ParseRMC(char *fields[],
         if (fields[2][0] == 'V')
         {
             gps_data.fix = false;
+            gps_data.speed = 0.0f;
             gps_has_rmc = true;
+            gps_last_rmc_tick = HAL_GetTick();
         }
 
         return;
@@ -366,6 +375,7 @@ static void GPS_ParseRMC(char *fields[],
 
     gps_data.fix = true;
     gps_has_rmc = true;
+    gps_last_rmc_tick = HAL_GetTick();
 }
 
 
@@ -466,21 +476,40 @@ static void GPS_ParseSentence(char *sentence)
 
 bool GPS_Init(void)
 {
+    HAL_StatusTypeDef status;
+
+    /* Khong khoi dong lai DMA khi no dang nhan du lieu */
+    if (gps_dma_running &&
+        huart1.RxState == HAL_UART_STATE_BUSY_RX)
+    {
+        return true;
+    }
+
+    gps_dma_running = false;
     gps_old_pos = 0;
     gps_nmea_index = 0;
     gps_has_rmc = false;
+    gps_last_rmc_tick = 0;
+    gps_last_retry_tick = HAL_GetTick();
 
     memset(&gps_data, 0, sizeof(gps_data));
+    memset(gps_dma_buffer, 0, sizeof(gps_dma_buffer));
+    memset(gps_nmea_buffer, 0, sizeof(gps_nmea_buffer));
 
-    memset(gps_dma_buffer,
-           0,
-           sizeof(gps_dma_buffer));
+    if (huart1.hdmarx == NULL)
+    {
+        return false;
+    }
 
-    memset(gps_nmea_buffer,
-           0,
-           sizeof(gps_nmea_buffer));
-
-    HAL_StatusTypeDef status;
+    /* Don dep trang thai nhan cu truoc khi thu khoi dong lai. */
+    if (huart1.RxState == HAL_UART_STATE_BUSY_RX ||
+        huart1.ErrorCode != HAL_UART_ERROR_NONE)
+    {
+        if (HAL_UART_AbortReceive(&huart1) != HAL_OK)
+        {
+            return false;
+        }
+    }
 
     status = HAL_UART_Receive_DMA(
         &huart1,
@@ -488,7 +517,8 @@ bool GPS_Init(void)
         GPS_DMA_BUFFER_SIZE
     );
 
-    return status == HAL_OK;
+    gps_dma_running = (status == HAL_OK);
+    return gps_dma_running;
 }
 
 
@@ -498,6 +528,31 @@ bool GPS_Init(void)
 
 void GPS_Process(void)
 {
+    uint32_t now = HAL_GetTick();
+
+    /* Khong dung toa do cu nhu mot GPS fix hien tai. */
+    if (gps_has_rmc &&
+        (uint32_t)(now - gps_last_rmc_tick) > GPS_SIGNAL_TIMEOUT_MS)
+    {
+        gps_data.fix = false;
+        gps_data.speed = 0.0f;
+        gps_data.satellites = 0;
+    }
+
+    /* Neu DMA khoi dong that bai hoac da dung, thu lai theo chu ky. */
+    if (!gps_dma_running ||
+        huart1.RxState != HAL_UART_STATE_BUSY_RX)
+    {
+        gps_dma_running = false;
+        gps_data.fix = false;
+
+        if ((uint32_t)(now - gps_last_retry_tick) >= GPS_RETRY_INTERVAL_MS)
+        {
+            (void)GPS_Init();
+        }
+        return;
+    }
+
     if (huart1.hdmarx == NULL)
         return;
 
