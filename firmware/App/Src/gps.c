@@ -71,8 +71,13 @@ static bool GPS_Checksum(const char *sentence)
         i++;
     }
 
-    if (sentence[i] != '*')
+    /* Phai co du hai ky tu hex sau dau '*'. */
+    if (sentence[i] != '*' ||
+        sentence[i + 1] == '\0' ||
+        sentence[i + 2] == '\0')
+    {
         return false;
+    }
 
     int high = GPS_HexValue(sentence[i + 1]);
 
@@ -322,6 +327,7 @@ static void GPS_ParseRMC(char *fields[],
         {
             gps_data.fix = false;
             gps_data.speed = 0.0f;
+            gps_data.satellites = 0;
             gps_has_rmc = true;
             gps_last_rmc_tick = HAL_GetTick();
         }
@@ -363,7 +369,8 @@ static void GPS_ParseRMC(char *fields[],
     gps_data.latitude = latitude;
     gps_data.longitude = longitude;
 
-    /* Toc do: knot -> km/h */
+    /* Toc do: knot -> km/h; khong giu toc do cu neu RMC moi thieu du lieu. */
+    gps_data.speed = 0.0f;
     double speed_knots;
 
     if (GPS_ParseDecimal(fields[7], &speed_knots) &&
@@ -545,6 +552,8 @@ void GPS_Process(void)
     {
         gps_dma_running = false;
         gps_data.fix = false;
+        gps_data.speed = 0.0f;
+        gps_data.satellites = 0;
 
         if ((uint32_t)(now - gps_last_retry_tick) >= GPS_RETRY_INTERVAL_MS)
         {

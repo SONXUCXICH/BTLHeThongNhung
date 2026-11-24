@@ -27,8 +27,6 @@
 #include "st7735.h"
 #include "tft_ui.h"
 /* USER CODE END Includes */
-#include "app_ipc.h"
-/* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
@@ -761,37 +759,28 @@ void StartTaskAlarm(void *argument)
 void StartTaskGPS(void *argument)
 {
   /* USER CODE BEGIN StartTaskGPS */
-  /* Infinite loop */
-  GpsData_t currentGps;
+  /* GPS_Init co the that bai tam thoi. GPS_Process tu thu lai moi 1 giay. */
+  (void)GPS_Init();
 
-/* Khoi dong GPS DMA */
-if (!GPS_Init())
-{
-    Error_Handler();
-}
+  for (;;)
+  {
+      /* Doc DMA va xu ly cac cau NMEA moi. */
+      GPS_Process();
 
-for (;;)
-{
-    /* Xu ly du lieu GPS */
-    GPS_Process();
+      /* Reset ban sao: khi DMA loi/khong co RMC thi khong giu fix cu. */
+      GpsData_t currentGps = {0};
+      bool hasRmc = GPS_GetData(&currentGps);
 
-    /* Lay du lieu da phan tich */
-    if (GPS_GetData(&currentGps))
-    {
-        /* Khoa mutex */
-        if (osMutexAcquire(mtxStateHandle, 20) == osOK)
-        {
-            g_systemState.gps = currentGps;
+      if (mtxStateHandle != NULL &&
+          osMutexAcquire(mtxStateHandle, 20U) == osOK)
+      {
+          g_systemState.gps = currentGps;
+          g_systemState.gpsReady = hasRmc && currentGps.fix;
+          (void)osMutexRelease(mtxStateHandle);
+      }
 
-            g_systemState.gpsReady = currentGps.fix;
-
-            /* Giai phong mutex */
-            osMutexRelease(mtxStateHandle);
-        }
-    }
-
-    osDelay(10);
-}
+      osDelay(10U);
+  }
   /* USER CODE END StartTaskGPS */
 }
 
