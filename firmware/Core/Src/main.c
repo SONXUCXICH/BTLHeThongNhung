@@ -28,8 +28,6 @@
 #include "task_imu.h"
 #include "task_sensor.h"
 /* USER CODE END Includes */
-#include "app_ipc.h"
-/* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
