@@ -24,6 +24,10 @@
 /* USER CODE BEGIN Includes */
 #include "gps.h"
 #include "app_ipc.h"
+#include "st7735.h"
+#include "tft_ui.h"
+/* USER CODE END Includes */
+#include "app_ipc.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -195,9 +199,12 @@ int main(void)
   MX_I2C1_Init();
   MX_SPI1_Init();
   MX_TIM1_Init();
-  /* USER CODE BEGIN 2 */
 
-  /* USER CODE END 2 */
+/* USER CODE BEGIN 2 */
+
+
+/* USER CODE END 2 */
+
 
   /* Init scheduler */
   osKernelInitialize();
@@ -813,16 +820,14 @@ void StartTaskSensor(void *argument)
 * @retval None
 */
 /* USER CODE END Header_StartTaskGUI */
+
 void StartTaskGUI(void *argument)
 {
   /* USER CODE BEGIN StartTaskGUI */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
+  TFT_UI_Run();
   /* USER CODE END StartTaskGUI */
 }
+
 
 /* USER CODE BEGIN Header_StartTaskLog */
 /**
