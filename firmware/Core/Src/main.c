@@ -22,13 +22,12 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "gps.h"
 #include "app_ipc.h"
 #include "st7735.h"
 #include "tft_ui.h"
 #include "task_imu.h"
 #include "task_sensor.h"
-/* USER CODE END Includes */
-#include "app_ipc.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -135,6 +134,7 @@ const osEventFlagsAttr_t evAlarm_attributes = {
 };
 /* USER CODE BEGIN PV */
 volatile uint8_t estop_pending = 0;
+SystemState g_systemState = {0};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -762,10 +762,27 @@ void StartTaskAlarm(void *argument)
 void StartTaskGPS(void *argument)
 {
   /* USER CODE BEGIN StartTaskGPS */
-  /* Infinite loop */
-  for(;;)
+  /* GPS_Init co the that bai tam thoi. GPS_Process tu thu lai moi 1 giay. */
+  (void)GPS_Init();
+
+  for (;;)
   {
-    osDelay(1);
+      /* Doc DMA va xu ly cac cau NMEA moi. */
+      GPS_Process();
+
+      /* Reset ban sao: khi DMA loi/khong co RMC thi khong giu fix cu. */
+      GpsData_t currentGps = {0};
+      bool hasRmc = GPS_GetData(&currentGps);
+
+      if (mtxStateHandle != NULL &&
+          osMutexAcquire(mtxStateHandle, 20U) == osOK)
+      {
+          g_systemState.gps = currentGps;
+          g_systemState.gpsReady = hasRmc && currentGps.fix;
+          (void)osMutexRelease(mtxStateHandle);
+      }
+
+      osDelay(10U);
   }
   /* USER CODE END StartTaskGPS */
 }
