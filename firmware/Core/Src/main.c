@@ -28,6 +28,7 @@
 #include "tft_ui.h"
 #include "task_imu.h"
 #include "task_sensor.h"
+#include "task_sd.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -201,7 +202,6 @@ int main(void)
   MX_TIM1_Init();
 
 /* USER CODE BEGIN 2 */
-
 
 /* USER CODE END 2 */
 
@@ -832,11 +832,9 @@ void StartTaskGUI(void *argument)
 void StartTaskLog(void *argument)
 {
   /* USER CODE BEGIN StartTaskLog */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
+
+  Task_SD_Run(argument);
+
   /* USER CODE END StartTaskLog */
 }
 
