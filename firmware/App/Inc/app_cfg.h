@@ -42,8 +42,8 @@
 #define TILT_LOW_DEG           40.0f
 
 /* Nguong ADC MQ-2 tam thoi */
-#define GAS_HIGH_THRESHOLD     2500U
-#define GAS_LOW_THRESHOLD      2200U
+#define GAS_HIGH_THRESHOLD     1250U
+#define GAS_LOW_THRESHOLD      1000U
 
 #define ESTOP_DEBOUNCE_MS      50U
 #define ESTOP_RESET_HOLD_MS    2000U
