@@ -66,6 +66,7 @@ static void imu_store(const ImuData_t *d, bool valid)
 
 bool TaskIMU_GetData(ImuData_t *out)
 {
+    if (out == NULL) return false;
     bool valid;
     taskENTER_CRITICAL();
     *out  = s_imu;
@@ -144,10 +145,12 @@ void TaskIMU_Run(void)
     Accel_t   f = {0, 0, 0};            /* vector gia tốc đã lọc */
     bool      first = true, tilt_active = false;
     uint8_t   tilt_cnt = 0, fail = 0, gui_n = 0;
+    
 
     /* Chờ cảm biến sẵn sàng; chưa cắm thì dữ liệu giữ trạng thái không hợp lệ */
     while (!mma_init()) {
         imu_store(NULL, false);
+        TFT_UI_SetImuValid(false);
         osDelay(TICKS(200));
     }
 
@@ -160,12 +163,16 @@ void TaskIMU_Run(void)
         Accel_t a;
         if (!mma_read_accel(&a)) {
             imu_store(NULL, false);
-            if (++fail >= I2C_FAIL_LIMIT) {      /* bus I2C bị treo -> reset */
-                HAL_I2C_DeInit(&hi2c1);
-                HAL_I2C_Init(&hi2c1);            /* hi2c1.Init vẫn giữ cấu hình từ CubeMX */
-                mma_init();
+            TFT_UI_SetImuValid(false);
+            if (++fail >= I2C_FAIL_LIMIT) {
+                /* Thu khoi phuc I2C. Neu MMA chua san sang, tiep tuc thu. */
+                (void)HAL_I2C_DeInit(&hi2c1);
+                if (HAL_I2C_Init(&hi2c1) == HAL_OK) {
+                    (void)mma_init();
+                }
                 fail = 0;
                 first = true;
+                next = osKernelGetTickCount();
             }
             continue;
         }
@@ -184,9 +191,10 @@ void TaskIMU_Run(void)
             f.az += IMU_LPF_K * (a.az - f.az);
         }
 
-        float roll  = atan2f(f.ay, f.az) * RAD2DEG;
+        float roll = atan2f(f.ay, fabsf(f.az)) * RAD2DEG;
         float pitch = atan2f(-f.ax, sqrtf(f.ay * f.ay + f.az * f.az)) * RAD2DEG;
-
+            
+    
         /* Cảnh báo lật/đổ: hysteresis (HIGH/LOW trong app_cfg.h) + xác nhận nhiều mẫu */
         float thr    = tilt_active ? TILT_LOW_DEG : TILT_HIGH_DEG;
         bool  beyond = (fabsf(pitch) > thr) || (fabsf(roll) > thr);
