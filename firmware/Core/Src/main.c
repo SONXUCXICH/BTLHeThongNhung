@@ -22,6 +22,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "task_alarm.h"
 #include "gps.h"
 #include "app_ipc.h"
 #include "st7735.h"
@@ -735,22 +736,12 @@ void StartTaskIMU(void *argument)
 /* USER CODE END Header_StartTaskAlarm */
 void StartTaskAlarm(void *argument)
 {
-  /* USER CODE BEGIN StartTaskAlarm */
-  /* Infinite loop */
-  for (;;)
-{
-    if (estop_pending)
-    {
-        estop_pending = 0;
-
-        // Gui su kien E-Stop vao FreeRTOS
-        osEventFlagsSet(evAlarmHandle, BIT_ESTOP);
-    }
-
-    osDelay(10);
+    /* USER CODE BEGIN StartTaskAlarm */
+    (void)argument;
+    TaskAlarm_Run();
+    /* USER CODE END StartTaskAlarm */
 }
   /* USER CODE END StartTaskAlarm */
-}
 
 /* USER CODE BEGIN Header_StartTaskGPS */
 /**
