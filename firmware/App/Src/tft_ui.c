@@ -60,6 +60,7 @@ typedef struct {
     ImuData_t imu;
     GpsData_t gps;
     bool sensorValid;
+    bool gasValid;
     bool imuValid;
     bool gpsValid;
     bool sdKnown;
@@ -141,6 +142,7 @@ void TFT_UI_UpdateSensor(const SensorData_t *data)
     if (data == NULL || !ui_lock()) return;
     s_state.sensor = *data;
     s_state.sensorValid = true;
+    s_state.gasValid = true;
     ++s_state.revision;
     (void)osMutexRelease(mtxStateHandle);
 }
@@ -223,7 +225,7 @@ static void ui_env(const UiState *s)
     else (void)snprintf(buf, sizeof(buf), "--");
     ui_field(50U, "DO AM:", buf, UI_CYAN);
 
-    if (s->sensorValid) {
+    if (s->gasValid) {
         /* % ADC: ty le tren thang do ADC 12-bit, khong phai nong do gas. */
         uint32_t gas_pct = ((uint32_t)s->sensor.gas * 100U + 2047U) / 4095U;
         if (gas_pct > 100U) gas_pct = 100U;
@@ -339,4 +341,30 @@ void TFT_UI_Run(void)
         }
         osDelay(50U);
     }
+}
+
+void TFT_UI_SetImuValid(bool valid)
+{
+    if (mtxStateHandle != NULL &&
+        osMutexAcquire(mtxStateHandle, 10U) == osOK)
+    {
+        s_state.imuValid = valid;
+        ++s_state.revision;
+        (void)osMutexRelease(mtxStateHandle);
+    }
+}
+
+void TFT_UI_UpdateSensorStatus(const SensorData_t *data,
+                               bool gasValid, bool dhtValid)
+{
+    if (!ui_lock()) return;
+
+    if (data != NULL)
+        s_state.sensor = *data;
+
+    s_state.gasValid = gasValid && (data != NULL);
+    s_state.sensorValid = dhtValid && (data != NULL);
+
+    ++s_state.revision;
+    (void)osMutexRelease(mtxStateHandle);
 }
