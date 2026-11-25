@@ -28,6 +28,7 @@
 #include "tft_ui.h"
 #include "task_imu.h"
 #include "task_sensor.h"
+#include "task_sd.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -201,7 +202,6 @@ int main(void)
   MX_TIM1_Init();
 
 /* USER CODE BEGIN 2 */
-
 
 /* USER CODE END 2 */
 
@@ -765,6 +765,8 @@ void StartTaskGPS(void *argument)
   /* GPS_Init co the that bai tam thoi. GPS_Process tu thu lai moi 1 giay. */
   (void)GPS_Init();
 
+  uint32_t lastGpsUiTick = 0U;
+
   for (;;)
   {
       /* Doc DMA va xu ly cac cau NMEA moi. */
@@ -780,6 +782,14 @@ void StartTaskGPS(void *argument)
           g_systemState.gps = currentGps;
           g_systemState.gpsReady = hasRmc && currentGps.fix;
           (void)osMutexRelease(mtxStateHandle);
+      }
+
+      /* Cap nhat giao dien GPS sau khi da nha mutex chia se he thong. */
+      uint32_t now = HAL_GetTick();
+      if (hasRmc && (uint32_t)(now - lastGpsUiTick) >= 500U)
+      {
+          TFT_UI_UpdateGps(&currentGps);
+          lastGpsUiTick = now;
       }
 
       osDelay(10U);
@@ -832,11 +842,9 @@ void StartTaskGUI(void *argument)
 void StartTaskLog(void *argument)
 {
   /* USER CODE BEGIN StartTaskLog */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
+
+  Task_SD_Run(argument);
+
   /* USER CODE END StartTaskLog */
 }
 
