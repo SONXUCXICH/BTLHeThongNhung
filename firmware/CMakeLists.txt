@@ -49,6 +49,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/tft_ui.c
     App/Src/task_imu.c
     App/Src/task_sensor.c
+    App/Src/task_alarm.c
 )
 
 # Add include paths
