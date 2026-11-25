@@ -15,7 +15,7 @@ typedef struct
     bool fix;
 } GpsData_t;
 
-/* Du lieu cam bien MPU6050 */
+/* Du lieu gia toc ke MMA845x: gyroX/Y/Z khong duoc su dung */
 typedef struct
 {
     float pitch;

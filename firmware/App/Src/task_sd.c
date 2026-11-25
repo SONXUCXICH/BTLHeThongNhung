@@ -3,6 +3,9 @@
 #include "app_ipc.h"
 #include "app_cfg.h"
 #include "main.h"
+#include "task_sensor.h"
+#include "task_imu.h"
+#include "tft_ui.h"
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
@@ -21,6 +24,9 @@ volatile UINT sd_bytes_written = 0;
 volatile UINT sd_bytes_read = 0;
 
 volatile uint8_t sd_file_test_ok = 0;
+/* 1 = lay duoc du lieu tu task cam bien / IMU; 0 = chua hop le. */
+volatile uint8_t sd_sensor_valid = 0;
+volatile uint8_t sd_imu_valid = 0;
 
 /* Test data */
 static const char test_data[] =
@@ -153,6 +159,9 @@ static void SD_SetReady(bool ready)
         g_systemState.sdReady = ready;
         osMutexRelease(mtxStateHandle);
     }
+
+    /* TFT dung cung mutex, vi vay phai goi SAU khi da nha mutex. */
+    TFT_UI_SetSdReady(ready);
 }
 
 /* Convert floating point to scaled integer */
@@ -360,6 +369,14 @@ void Task_SD_Run(void *argument)
                 continue;
             }
 
+            /* Chi test ghi/doc khi mount lai; ghi de file SDTEST.TXT. */
+            if (SD_Storage_Test() != FR_OK)
+            {
+                SD_Log_Close();
+                osDelay(2000);
+                continue;
+            }
+
             if (SD_Log_Open() != FR_OK)
             {
                 SD_Log_Close();
@@ -371,15 +388,38 @@ void Task_SD_Run(void *argument)
             last_sync = HAL_GetTick();
         }
 
-        /* Copy shared data under mutex */
-        if (osMutexAcquire(
-            mtxStateHandle, osWaitForever) == osOK)
+        /* Chup nhanh GPS va cac truong shared state trong mutex. */
+        bool got_state = false;
+        if (mtxStateHandle != NULL &&
+            osMutexAcquire(mtxStateHandle, 20U) == osOK)
         {
             log_state = g_systemState;
-
+            got_state = true;
             osMutexRelease(mtxStateHandle);
+        }
 
-            /* Write outside the mutex */
+        if (got_state)
+        {
+            /* Sensor/IMU duoc luu rieng boi task cua Chung. */
+            SensorData_t sensor = {0};
+            ImuData_t imu = {0};
+            bool sensor_ok = TaskSensor_GetData(&sensor);
+            bool imu_ok = TaskIMU_GetData(&imu);
+
+            sd_sensor_valid = sensor_ok ? 1U : 0U;
+            sd_imu_valid = imu_ok ? 1U : 0U;
+            log_state.sensor = sensor;
+            log_state.imu = imu;
+
+            /* Doc co canh bao tu EventFlags, khong xoa co. */
+            if (evAlarmHandle != NULL)
+            {
+                uint32_t flags = osEventFlagsGet(evAlarmHandle);
+                if ((flags & osFlagsError) == 0U)
+                    log_state.alarmFlags = flags & ALARM_ALL_BITS;
+            }
+
+            /* Ghi ngoai mutex de khong khoa TFT va task cam bien. */
             if (SD_Log_Write(&log_state) != FR_OK)
             {
                 SD_Log_Close();

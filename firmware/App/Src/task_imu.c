@@ -184,7 +184,7 @@ void TaskIMU_Run(void)
             f.az += IMU_LPF_K * (a.az - f.az);
         }
 
-        float roll  = atan2f(f.ay, f.az) * RAD2DEG;
+        float roll  = atan2f(f.ay, -f.az) * RAD2DEG;
         float pitch = atan2f(-f.ax, sqrtf(f.ay * f.ay + f.az * f.az)) * RAD2DEG;
 
         /* Cảnh báo lật/đổ: hysteresis (HIGH/LOW trong app_cfg.h) + xác nhận nhiều mẫu */
