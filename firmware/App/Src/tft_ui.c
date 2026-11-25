@@ -186,7 +186,13 @@ static void ui_field(uint16_t y, const char *key, const char *value,
                      uint16_t color)
 {
     ui_text(7U, y, key, UI_DIM, 1U);
-    ui_text(52U, y, value, color, 1U);
+    size_t width = strlen(value) * 6U;
+    uint16_t x = width < 124U ?
+                 (uint16_t)(124U - width) : 7U;
+    uint16_t min_x =
+        (uint16_t)(7U + 6U * (strlen(key) + 1U));
+    if (x < min_x) x = min_x;
+    ui_text(x, y, value, color, 1U);
     (void)ST7735_FillRect(6U, y + 12U, 116U, 1U, UI_PANEL);
 }
 
@@ -195,7 +201,7 @@ static void ui_alarm(uint32_t flags)
     uint16_t bg = UI_GREEN;
     const char *text = "HE THONG OK";
     if (flags & BIT_ESTOP) { bg = UI_RED; text = "DUNG KHAN CAP"; }
-    else if (flags & BIT_GAS) { bg = UI_RED; text = "CANH BAO KHI"; }
+    else if (flags & BIT_GAS) { bg = UI_RED; text = "CANH BAO KHI GAS"; }
     else if (flags & BIT_TILT) { bg = UI_YELLOW; text = "CANH BAO NGHIENG"; }
     (void)ST7735_FillRect(0U, 131U, UI_W, 16U, bg);
     ui_text(7U, 135U, text, UI_BG, 1U);
@@ -219,7 +225,7 @@ static void ui_env(const UiState *s)
     char buf[24];
     if (s->sensorValid) ui_fixed1(buf, sizeof(buf), s->sensor.temperature);
     else (void)snprintf(buf, sizeof(buf), "--");
-    ui_field(30U, "NHIET:", buf, UI_CYAN);
+    ui_field(30U, "NHIET DO:", buf, UI_CYAN);
 
     if (s->sensorValid) ui_fixed1(buf, sizeof(buf), s->sensor.humidity);
     else (void)snprintf(buf, sizeof(buf), "--");
@@ -233,11 +239,11 @@ static void ui_env(const UiState *s)
     } else {
         (void)snprintf(buf, sizeof(buf), "--");
     }
-    ui_field(70U, "KHI:", buf, UI_YELLOW);
+    ui_field(70U, "KHI GAS:", buf, UI_YELLOW);
 
-    ui_field(90U, "THE SD:", !s->sdKnown ? "--" : (s->sdReady ? "SAN SANG" : "LOI"),
+    ui_field(90U, "THE NHO:", !s->sdKnown ? "--" : (s->sdReady ? "SAN SANG" : "LOI"),
              s->sdReady ? UI_GREEN : UI_DIM);
-    ui_field(110U, "GPS:", !s->gpsValid ? "--" : (s->gps.fix ? "FIX" : "CHUA FIX"),
+    ui_field(110U, "GPS:", !s->gpsValid ? "CHUA CO" : (s->gps.fix ? "DA DINH VI" : "CHUA DINH VI"),
              s->gpsValid && s->gps.fix ? UI_GREEN : UI_DIM);
 }
 
@@ -246,11 +252,11 @@ static void ui_imu(const UiState *s)
     char buf[24];
     if (s->imuValid) ui_fixed1(buf, sizeof(buf), s->imu.pitch);
     else (void)snprintf(buf, sizeof(buf), "--");
-    ui_field(32U, "DOC:", buf, UI_CYAN);
+    ui_field(32U, "GOC DOC:", buf, UI_CYAN);
 
     if (s->imuValid) ui_fixed1(buf, sizeof(buf), s->imu.roll);
     else (void)snprintf(buf, sizeof(buf), "--");
-    ui_field(56U, "NGANG:", buf, UI_CYAN);
+    ui_field(56U, "GOC NGANG:", buf, UI_CYAN);
 
     /* MMA845x chi la gia toc ke, khong co gyro Z. */
     ui_field(80U, "IC:", "MMA845X", UI_YELLOW);
@@ -263,22 +269,22 @@ static void ui_gps(const UiState *s)
 {
     char buf[24];
     if (s->gpsValid && s->gps.fix) ui_coord(buf, sizeof(buf), s->gps.latitude);
-    else (void)snprintf(buf, sizeof(buf), "--");
+    else (void)snprintf(buf, sizeof(buf), "CHUA CO");
     ui_field(30U, "VI DO:", buf, UI_CYAN);
 
     if (s->gpsValid && s->gps.fix) ui_coord(buf, sizeof(buf), s->gps.longitude);
-    else (void)snprintf(buf, sizeof(buf), "--");
-    ui_field(52U, "KINH:", buf, UI_CYAN);
+    else (void)snprintf(buf, sizeof(buf), "CHUA CO");
+    ui_field(52U, "KINH DO:", buf, UI_CYAN);
 
     if (s->gpsValid) (void)snprintf(buf, sizeof(buf), "%u", (unsigned)s->gps.satellites);
-    else (void)snprintf(buf, sizeof(buf), "--");
-    ui_field(74U, "TINH:", buf, UI_YELLOW);
+    else (void)snprintf(buf, sizeof(buf), "CHUA CO");
+    ui_field(74U, "VE TINH:", buf, UI_YELLOW);
 
     if (s->gpsValid && s->gps.fix) ui_fixed1(buf, sizeof(buf), s->gps.speed);
-    else (void)snprintf(buf, sizeof(buf), "--");
+    else (void)snprintf(buf, sizeof(buf), "CHUA CO");
     ui_field(96U, "TOC DO:", buf, UI_CYAN);
 
-    ui_text(7U, 117U, s->gpsValid && s->gps.fix ? "DA DINH VI" : "DOI TIN HIEU",
+    ui_text(7U, 117U, s->gpsValid && s->gps.fix ? "DA DINH VI" : "CHUA DINH VI",
             s->gpsValid && s->gps.fix ? UI_GREEN : UI_DIM, 1U);
 }
 
