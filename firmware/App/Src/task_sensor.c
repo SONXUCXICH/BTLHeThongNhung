@@ -3,7 +3,7 @@
  * - DHT11 trên PB5 (DHT11_DATA), polling có timeout, mỗi DHT11_READ_PERIOD_MS
  * Vòng 20 ms: quét joystick -> gửi JoyEvent_t (app_types.h) vào qJoy.
  * Cứ SENSOR_TASK_PERIOD_MS (100 ms): lọc gas, báo động BIT_GAS trên evAlarm,
- * rồi gọi TFT_UI_UpdateSensor().
+ * roi goi TFT_UI_UpdateSensorStatus().
  */
 #include "task_sensor.h"
 #include "app_cfg.h"
@@ -38,6 +38,12 @@ static volatile uint16_t adc_buf[ADC_CHANNEL_COUNT];
 static SensorData_t s_sensor;
 static bool         s_sensor_valid;
 
+/* Dem loi DHT11 de debug bang GDB; khong anh huong den FreeRTOS. */
+volatile uint32_t g_dht_ok_count = 0U;
+volatile uint32_t g_dht_fail_count = 0U;
+/* 0=OK, 1..3=phan hoi, 4..5=xung du lieu, 6=sai checksum. */
+volatile uint32_t g_dht_last_error = 0U;
+
 static void sensor_store(const SensorData_t *d)
 {
     taskENTER_CRITICAL();
@@ -48,6 +54,7 @@ static void sensor_store(const SensorData_t *d)
 
 bool TaskSensor_GetData(SensorData_t *out)
 {
+    if (out == NULL) return false;
     bool valid;
     taskENTER_CRITICAL();
     *out  = s_sensor;
@@ -115,23 +122,30 @@ static bool dht11_read(uint8_t *temp_c, uint8_t *hum_pct)
     DHT_LOW();
     osDelay(TICKS(20));                  /* start: kéo thấp >= 18 ms, không chặn CPU */
 
-    taskENTER_CRITICAL();                /* phần đo thời gian ~4 ms */
+    /* Tam dung chuyen task, nhung van cho ngat EXTI hoat dong.
+     * Neu ISR chen vao lam sai timing, checksum/timeout se loai mau.
+     * Day chi la giai phap cho demo; can timer capture neu yeu cau an toan cao. */
+    taskENTER_CRITICAL();
     DHT_REL();
-    if (dht_wait_while(1, 100) < 0) ok = false;
-    if (ok && dht_wait_while(0, 120) < 0) ok = false;
-    if (ok && dht_wait_while(1, 120) < 0) ok = false;
+    if (dht_wait_while(1, 100) < 0) { ok = false; g_dht_last_error = 1U; }
+    if (ok && dht_wait_while(0, 120) < 0) { ok = false; g_dht_last_error = 2U; }
+    if (ok && dht_wait_while(1, 120) < 0) { ok = false; g_dht_last_error = 3U; }
 
     for (int i = 0; ok && i < 40; i++) {
-        if (dht_wait_while(0, 80) < 0) { ok = false; break; }
+        if (dht_wait_while(0, 80) < 0) { ok = false; g_dht_last_error = 4U; break; }
         int t = dht_wait_while(1, 100);  /* ~27 µs = bit 0, ~70 µs = bit 1 */
-        if (t < 0) { ok = false; break; }
+        if (t < 0) { ok = false; g_dht_last_error = 5U; break; }
         d[i / 8] <<= 1;
         if (t > 40) d[i / 8] |= 1;
     }
     taskEXIT_CRITICAL();
 
     if (!ok) return false;
-    if (((d[0] + d[1] + d[2] + d[3]) & 0xFF) != d[4]) return false;
+    if (((d[0] + d[1] + d[2] + d[3]) & 0xFF) != d[4]) {
+        g_dht_last_error = 6U;
+        return false;
+    }
+    g_dht_last_error = 0U;
 
     *hum_pct = d[0];
     *temp_c  = d[2];
@@ -141,15 +155,33 @@ static bool dht11_read(uint8_t *temp_c, uint8_t *hum_pct)
 /* ---------- Task ---------- */
 void TaskSensor_Run(void)
 {
-    SensorData_t s = {0};               /* temperature/humidity giữ giá trị DHT11 hợp lệ gần nhất (0 nếu chưa có) */
+    SensorData_t s = {0};      /* Gia tri cu chi hien khi da co mau DHT hop le. */
+    bool dht_valid = false;
+    uint8_t dht_fail_streak = 0U;
 
     dwt_init();
     dht_gpio_init();
 
-    HAL_ADCEx_Calibration_Start(&hadc1);
-    HAL_ADC_Start_DMA(&hadc1, (uint32_t *)(void *)adc_buf, ADC_CHANNEL_COUNT);
-    /* Buffer chỉ 3 phần tử nên DMA ngắt (TC/HT) hàng chục nghìn lần mỗi giây.
-     * Ta đọc thẳng mảng, không cần ngắt này -> tắt để khỏi tốn CPU. */
+    /* Neu ADC/DMA loi, KHONG dung ca he thong va khong doc buffer chua khoi tao.
+     * Chi thu lai task cam bien; giao dien se hien -- cho cac gia tri. */
+    while (true) {
+        HAL_StatusTypeDef cal = HAL_ADCEx_Calibration_Start(&hadc1);
+        HAL_StatusTypeDef dma = HAL_ERROR;
+        if (cal == HAL_OK && hadc1.DMA_Handle != NULL) {
+            dma = HAL_ADC_Start_DMA(&hadc1,
+                                    (uint32_t *)(void *)adc_buf,
+                                    ADC_CHANNEL_COUNT);
+        }
+        if (cal == HAL_OK && dma == HAL_OK) break;
+
+        TFT_UI_UpdateSensorStatus(NULL, false, false);
+        if (hadc1.DMA_Handle != NULL) {
+            (void)HAL_ADC_Stop_DMA(&hadc1);
+        }
+        osDelay(1000U);
+    }
+
+    /* DMA 3 mau quet lien tuc: khong can ngat half/complete. */
     __HAL_DMA_DISABLE_IT(hadc1.DMA_Handle, DMA_IT_TC | DMA_IT_HT);
 
     Axis_t   ax = {0, 0, 0}, ay = {0, 0, 0};
@@ -208,13 +240,22 @@ void TaskSensor_Run(void)
             dht_n = 0;
             uint8_t t, h;
             if (dht11_read(&t, &h)) {
+                ++g_dht_ok_count;
+                dht_fail_streak = 0U;
                 s.temperature = (float)t;
                 s.humidity    = (float)h;
+                dht_valid = true;
+            } else {
+                ++g_dht_fail_count;
+                if (dht_fail_streak < 3U) ++dht_fail_streak;
+                /* Mot lan loi do nhieu/xung doc khong lam mat ngay so do.
+                 * Sau 3 lan loi lien tiep (~6 s) phai bao DHT khong hop le. */
+                if (dht_fail_streak >= 3U) dht_valid = false;
             }
         }
 
         s.gas = (uint16_t)gas_f;
         sensor_store(&s);
-        TFT_UI_UpdateSensor(&s);
+        TFT_UI_UpdateSensorStatus(&s, true, dht_valid);
     }
 }
