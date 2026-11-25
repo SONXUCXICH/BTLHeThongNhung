@@ -50,11 +50,16 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/task_imu.c
     App/Src/task_sensor.c
     App/Src/task_alarm.c
+    App/Src/microsd.c
+    App/Src/task_sd.c
+    Middlewares/FatFs/ff.c
+    Middlewares/FatFs/diskio.c
 )
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/App/Inc
+    ${CMAKE_SOURCE_DIR}/Middlewares/FatFs
 )
 
 # Add project symbols (macros)

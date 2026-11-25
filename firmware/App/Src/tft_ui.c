@@ -14,7 +14,7 @@
 /* 1 = tu chuyen trang moi 6 giay de thu du 3 trang khi chua co code Joystick.
  * Tu dung chuyen trang khi nhan duoc su kien Joystick hop le.
  * Doi thanh 0 khi tich hop chinh thuc. */
-#define UI_AUTOPAGE_DEMO 1
+#define UI_AUTOPAGE_DEMO 0
 
 #define UI_W      128U
 #define UI_H      160U
@@ -60,6 +60,7 @@ typedef struct {
     ImuData_t imu;
     GpsData_t gps;
     bool sensorValid;
+    bool gasValid;
     bool imuValid;
     bool gpsValid;
     bool sdKnown;
@@ -141,6 +142,7 @@ void TFT_UI_UpdateSensor(const SensorData_t *data)
     if (data == NULL || !ui_lock()) return;
     s_state.sensor = *data;
     s_state.sensorValid = true;
+    s_state.gasValid = true;
     ++s_state.revision;
     (void)osMutexRelease(mtxStateHandle);
 }
@@ -223,8 +225,14 @@ static void ui_env(const UiState *s)
     else (void)snprintf(buf, sizeof(buf), "--");
     ui_field(50U, "DO AM:", buf, UI_CYAN);
 
-    if (s->sensorValid) (void)snprintf(buf, sizeof(buf), "%u ADC", (unsigned)s->sensor.gas);
-    else (void)snprintf(buf, sizeof(buf), "--");
+    if (s->gasValid) {
+        /* % ADC: ty le tren thang do ADC 12-bit, khong phai nong do gas. */
+        uint32_t gas_pct = ((uint32_t)s->sensor.gas * 100U + 2047U) / 4095U;
+        if (gas_pct > 100U) gas_pct = 100U;
+        (void)snprintf(buf, sizeof(buf), "%lu%% ADC", (unsigned long)gas_pct);
+    } else {
+        (void)snprintf(buf, sizeof(buf), "--");
+    }
     ui_field(70U, "KHI:", buf, UI_YELLOW);
 
     ui_field(90U, "THE SD:", !s->sdKnown ? "--" : (s->sdReady ? "SAN SANG" : "LOI"),
@@ -244,9 +252,8 @@ static void ui_imu(const UiState *s)
     else (void)snprintf(buf, sizeof(buf), "--");
     ui_field(56U, "NGANG:", buf, UI_CYAN);
 
-    if (s->imuValid) ui_fixed1(buf, sizeof(buf), s->imu.gyroZ);
-    else (void)snprintf(buf, sizeof(buf), "--");
-    ui_field(80U, "XOAY Z:", buf, UI_YELLOW);
+    /* MMA845x chi la gia toc ke, khong co gyro Z. */
+    ui_field(80U, "IC:", "MMA845X", UI_YELLOW);
 
     ui_field(108U, "IMU:", s->imuValid ? "SAN SANG" : "--",
              s->imuValid ? UI_GREEN : UI_DIM);
@@ -334,4 +341,30 @@ void TFT_UI_Run(void)
         }
         osDelay(50U);
     }
+}
+
+void TFT_UI_SetImuValid(bool valid)
+{
+    if (mtxStateHandle != NULL &&
+        osMutexAcquire(mtxStateHandle, 10U) == osOK)
+    {
+        s_state.imuValid = valid;
+        ++s_state.revision;
+        (void)osMutexRelease(mtxStateHandle);
+    }
+}
+
+void TFT_UI_UpdateSensorStatus(const SensorData_t *data,
+                               bool gasValid, bool dhtValid)
+{
+    if (!ui_lock()) return;
+
+    if (data != NULL)
+        s_state.sensor = *data;
+
+    s_state.gasValid = gasValid && (data != NULL);
+    s_state.sensorValid = dhtValid && (data != NULL);
+
+    ++s_state.revision;
+    (void)osMutexRelease(mtxStateHandle);
 }
